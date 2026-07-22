@@ -56,8 +56,8 @@ if [ "$MODE" = "secure-share" ]; then
 fi
 
 # Preserve advanced values not prompted for.
-PORT_H="$(cur HTTP_PORT)";  PORT_H="${PORT_H:-80}"
-PORT_S="$(cur HTTPS_PORT)"; PORT_S="${PORT_S:-443}"
+PORT_H="$(cur HTTP_PORT)";  PORT_H="${PORT_H:-8080}"   # rootless-safe defaults (Podman/Kali)
+PORT_S="$(cur HTTPS_PORT)"; PORT_S="${PORT_S:-8443}"
 MAX_FMB="$(cur MAX_FILE_MB)"; MAX_FMB="${MAX_FMB:-25}"
 REDIR="$(cur REDIRECT_URL)"
 

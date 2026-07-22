@@ -8,8 +8,10 @@ DC := docker compose --env-file config/settings.env
 
 CLIENT ?= client
 TTL    ?=
-BASE   ?= https://localhost
 BURN   ?= 1
+# Default share base follows the configured HTTPS port (rootless-safe 8443 out of the box).
+DDPORT := $(shell grep -E '^HTTPS_PORT=' config/settings.env 2>/dev/null | cut -d= -f2)
+BASE   ?= https://localhost:$(or $(DDPORT),8443)
 
 .DEFAULT_GOAL := help
 .PHONY: help setup config up down restart logs ps build rebuild destroy shell url \
@@ -35,9 +37,8 @@ config: ## Show the current settings
 	@grep -E '^[A-Z]' config/settings.env | sed 's/^/    /'
 	@echo ""
 
-up: ## Start the server (builds on first run; applies config changes)
-	$(DC) up -d --build
-	@echo "Server up. Mint a link:  make share CLIENT=\"Name\" TTL=48h"
+up: ## Start the server — Docker OR rootless Podman (starts Podman's socket if needed)
+	@bash scripts/up.sh
 
 down: ## Stop the server (all session links die; data is kept)
 	$(DC) down

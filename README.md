@@ -55,13 +55,16 @@ responsible for how you use it.** The authors provide it as-is, for legitimate p
 
 ## Requirements
 
-**Docker Engine + Docker Compose v2.** That's the only thing you install.
-Caddy, PHP, and every extension are pulled/built automatically on first run.
+A container runtime — **either works, and `make up` handles both:**
 
-- Linux (incl. Kali): [install Docker Engine](https://docs.docker.com/engine/install/)
-- macOS / Windows: [Docker Desktop](https://www.docker.com/products/docker-desktop/)
+- **Docker Engine + Compose v2** — smoothest path. [Install Docker](https://docs.docker.com/engine/install/)
+  (Linux/Kali) or [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS/Windows).
+- **Podman** — Kali ships this by default (behind a `docker` shim). Also fine: `make up` starts
+  Podman's rootless socket for you, and the shipped ports (8080/8443) are unprivileged so rootless
+  can bind them.
 
-Check it's there: `docker compose version`
+Nothing else is installed — Caddy, PHP, and every extension are pulled/built on first run.
+Check your runtime: `docker compose version`
 
 ---
 
@@ -71,15 +74,15 @@ Check it's there: `docker compose version`
 git clone https://github.com/Gypsy-82/deaddrop.git
 cd deaddrop
 
-docker compose up -d          # or: make up
+make up
 ```
 
-That single command pulls Caddy, builds the PHP image, generates this session's secret
-URL, and creates the SQLite database. No files to edit, no setup step. It starts in
-**feedback** mode by default — run `make setup` to choose it (or switch to secure-share).
+`make up` pulls Caddy, builds the PHP image, generates this session's secret URL, creates the
+SQLite database — and, on Podman, starts the socket for you. No files to edit. It starts in
+**feedback** mode by default; run `make setup` to choose it (or switch to secure-share).
 
-The server is now live at `https://localhost/…` — but nothing is reachable yet without
-a **secret link**, which you mint next.
+The server is now live at **https://localhost:8443/** — but nothing is reachable yet without a
+**secret link**, which you mint next.
 
 > **Local HTTPS note:** on `localhost`, Caddy uses its own internal certificate authority,
 > so your browser shows a one-time "not secure" warning. That's expected offline — click
@@ -273,12 +276,16 @@ through the live Caddy proxy.
 Still fully local-first, but to expose it on a real domain with a real certificate:
 
 ```bash
-# in config/settings.env, set:  SITE_ADDRESS=yourdomain.com
+# in config/settings.env set:
+#   SITE_ADDRESS=yourdomain.com
+#   HTTP_PORT=80
+#   HTTPS_PORT=443       # Let's Encrypt's challenge needs 80/443 reachable
 make up
 ```
 
-Then point the domain's DNS `A`/`AAAA` record at the host and allow inbound `80` + `443`.
-Caddy fetches a Let's Encrypt certificate automatically. Nothing else changes.
+Then point the domain's DNS `A`/`AAAA` at the host and allow inbound `80` + `443`. Caddy fetches a
+Let's Encrypt certificate automatically. (Binding 80/443 needs rootful Docker, or under rootless:
+`sudo sysctl net.ipv4.ip_unprivileged_port_start=80`.)
 
 ---
 
@@ -354,8 +361,12 @@ docker compose exec -T php cat /data/app.sqlite > backup.sqlite
 
 ## Troubleshooting
 
+- **Podman / Kali — "Cannot connect to the Docker daemon … podman.sock"** — Podman's socket is off
+  by default. `make up` tries to start it; if it can't, run `systemctl --user enable --now
+  podman.socket` once. Rootless Podman also can't bind 80/443 — that's why ports default to
+  8080/8443. Want zero surprises? Install Docker Engine: `sudo apt install -y docker.io docker-compose-v2`.
 - **Browser cert warning on localhost** — expected (Caddy's local CA); click through or trust it.
-- **Port 80/443 already in use** — set `HTTP_PORT`/`HTTPS_PORT` in `config/settings.env`, run
-  `make up`, and pass a matching `BASE=` to `make share` (e.g. `BASE="https://localhost:8443"`).
+- **Ports already in use** — change `HTTP_PORT`/`HTTPS_PORT` in `config/settings.env` and run
+  `make up`; `make share` follows the new port automatically.
 - **A link 404s** — it expired, was revoked, or the server restarted since you minted it. Mint a new one.
 - **See what's happening** — `make logs`.
