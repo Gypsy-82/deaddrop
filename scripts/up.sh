@@ -37,7 +37,12 @@ $DC up -d --build || exit 1
 
 port="$(grep -E '^HTTPS_PORT=' config/settings.env | cut -d= -f2)"; port="${port:-8443}"
 addr="$(grep -E '^SITE_ADDRESS=' config/settings.env | cut -d= -f2)"; addr="${addr:-localhost}"
+mode="$(grep -E '^INDEX_TEMPLATE=' config/settings.env | cut -d= -f2)"; mode="${mode:-feedback}"
 echo ""
 echo "  ✔ Deaddrop is up — open  https://$addr:$port/"
 echo "    (localhost uses a self-signed cert; the one-time browser warning is expected)"
-echo "    Next:  make share CLIENT=\"Name\"   ·   make secret   ·   make file FILE=./x"
+if [ "$mode" = "secure-share" ]; then
+  echo "    Mode: secure-share  →  next:  make secret   ·   make file FILE=./doc.pdf"
+else
+  echo "    Mode: feedback  →  next:  make share CLIENT=\"Name\"    (switch modes: make setup)"
+fi
