@@ -1,0 +1,10 @@
+#!/bin/sh
+# Container healthcheck: ping php-fpm's built-in status endpoint over FastCGI.
+# Exits 0 only if the pool answers with "pong".
+set -eu
+
+REQUEST_METHOD=GET \
+SCRIPT_NAME=/ping \
+SCRIPT_FILENAME=/ping \
+REQUEST_URI=/ping \
+cgi-fcgi -bind -connect 127.0.0.1:9000 2>/dev/null | grep -q pong

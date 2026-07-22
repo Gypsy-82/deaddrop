@@ -1,0 +1,7 @@
+# Keep the build context tiny — the PHP image bakes in no app code (it's bind-mounted).
+.git
+.gitignore
+.env
+*.md
+README*
+LICENSE*

@@ -1,0 +1,104 @@
+# Deaddrop — hardened, zero-config, LOCAL dead-drop bundle (feedback + secure-share).
+#
+#   git clone …  &&  make up                   →  server running
+#   make share CLIENT="Acme" TTL=48h           →  feedback link to send  (INDEX_TEMPLATE=feedback)
+#   make secret TTL=24h                        →  encrypted-secret link  (INDEX_TEMPLATE=secure-share)
+#
+# Settings live in config/settings.env — every value has a safe default, so a fresh clone runs
+# with no edits.
+# The obfuscated URL + signing key are regenerated on every start (see php/docker-entrypoint.sh),
+# so links are bound to a live server session and die on restart. Only the SQLite DB persists.
+
+services:
+  # ── Edge: the ONLY internet-facing container ──────────────────────────────
+  # Terminates TLS, reverse-proxies PHP over FastCGI. Publishes nothing else.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    env_file:
+      # Caddy reads {$SITE_ADDRESS} from here, so a plain `docker compose up` honors the
+      # config too (not just `make up`). localhost → internal CA; a domain → Let's Encrypt.
+      - ./config/settings.env
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro   # config, read-only
+      - ./public:/var/www/html/public:ro            # same path as PHP sees (FastCGI parity)
+      - caddy_data:/data                            # TLS certs/keys — MUST persist (rate limits!)
+      - caddy_config:/config
+    tmpfs:
+      - /tmp
+    networks:
+      - edge        # egress for ACME (unused on localhost, needed for a real domain)
+      - internal    # reach php over FastCGI
+    depends_on:
+      php:
+        condition: service_healthy
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE   # required to bind :80/:443 after dropping ALL caps
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+    healthcheck:
+      # BusyBox wget (alpine): -q quiet, -O- to stdout; non-2xx exits non-zero.
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:80/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── App: PHP-FPM. Never published, non-root, read-only rootfs, NO egress ──
+  php:
+    build:
+      context: .
+      dockerfile: php/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ./config/settings.env   # app settings (DEFAULT_TTL, REDIRECT_URL…) → PHP getenv()
+    init: true             # proper signal handling / zombie reaping as PID 1
+    user: "82:82"          # alpine www-data; the whole process runs non-root
+    expose:
+      - "9000"             # internal only — deliberately NO `ports:` mapping
+    volumes:
+      - ./public:/var/www/html/public:ro   # front controller (comment board)
+      - ./src:/var/www/html/src:ro         # app classes
+      - ./bin:/var/www/html/bin:ro         # CLI tools (share / messages / rotate …)
+      - ./db:/var/www/html/db:ro           # schema, applied on first boot
+      - app_data:/data                     # SQLite lives here — the ONLY persistent writable data
+    tmpfs:
+      # read-only rootfs: every runtime write goes to RAM.
+      # /tmp also holds the per-session obfuscation prefix + signing key (see /tmp/session).
+      - /tmp:mode=1777
+      - /run
+    networks:
+      - internal           # ONLY the no-egress network; the app cannot reach the internet
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "php-fpm-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+networks:
+  edge:
+    driver: bridge
+  internal:
+    driver: bridge
+    internal: true          # no route to the outside world
+
+volumes:
+  app_data:                 # SQLite database — survives restarts (messages you read later)
+  caddy_data:               # TLS certificates & ACME account keys
+  caddy_config:             # Caddy's autosaved config

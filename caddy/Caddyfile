@@ -1,0 +1,57 @@
+# Caddy — the only internet-facing component.
+#
+# SITE_ADDRESS drives TLS automatically:
+#   localhost      → Caddy's internal self-signed CA (offline, browser shows an expected warning)
+#   yourdomain.com → automatic Let's Encrypt certificate (needs public DNS + open 80/443)
+#
+# Caddy does NOT know the obfuscated prefix — that gate lives entirely in PHP
+# (public/index.php) so the secret never touches the proxy config and rotates per session.
+#
+# Anti-fingerprint: /health answers only to loopback (the in-container Docker healthcheck).
+# From the outside, /health is indistinguishable from any other path — it falls through
+# to the app and gets the same blank 404.
+
+{
+	admin off              # no local admin API surface to attack
+	# email you@example.com   # uncomment for real-domain ACME notifications
+}
+
+# ── HTTP :80 — loopback-only health, redirect everyone else to HTTPS ───────────
+:80 {
+	@health {
+		path /health
+		remote_ip 127.0.0.1/8 ::1
+	}
+	handle @health {
+		respond "ok" 200
+	}
+	handle {
+		redir https://{host}{uri} permanent
+	}
+}
+
+# ── HTTPS — the application (every external request lands on index.php) ─────────
+https://{$SITE_ADDRESS:localhost} {
+	root * /var/www/html/public
+	encode zstd gzip
+
+	# Stealth / anti-fingerprint headers — applied to every response, including 404s.
+	header {
+		-Server
+		-X-Powered-By
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		# Content-Security-Policy is set per-response by PHP: the secure-share viewer
+		# needs a per-request script nonce, so it can't be a static header here.
+		# HSTS is intentionally omitted for the localhost default (it breaks local testing).
+		# For a real domain, uncomment:
+		# Strict-Transport-Security "max-age=31536000; includeSubDomains"
+	}
+
+	# php_fastcgi resolves SCRIPT_FILENAME under /var/www/html/public — the SAME path
+	# PHP-FPM mounts — so FastCGI never throws "Primary script unknown". index.php runs
+	# the two gates; anything that fails returns a uniform 404 and is logged.
+	php_fastcgi php:9000
+	file_server
+}

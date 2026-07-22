@@ -1,0 +1,13 @@
+# Local overrides — never commit real config.
+.env
+
+# Data never lives in the repo (it's in Docker named volumes), but ignore stray copies.
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+/data/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
