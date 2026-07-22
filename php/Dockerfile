@@ -1,7 +1,7 @@
 # PHP-FPM image: minimal, non-root, hardened.
 # pdo_sqlite + opcache are compiled from PHP's bundled sources (no extra system libs).
 # `fcgi` provides cgi-fcgi, used by the container healthcheck.
-FROM php:8.3-fpm-alpine
+FROM docker.io/library/php:8.3-fpm-alpine
 
 RUN set -eux; \
     # Runtime libs: fcgi → cgi-fcgi (healthcheck); sqlite-libs → pdo_sqlite links to it.

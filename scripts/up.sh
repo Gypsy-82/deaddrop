@@ -1,31 +1,35 @@
 #!/usr/bin/env bash
-# `make up` — start the stack. Works on Docker OR rootless Podman (Kali's default),
-# with no hand-tweaks: if the daemon is unreachable it starts Podman's API socket for you,
-# and the shipped ports (8080/8443) are unprivileged so rootless can bind them.
+# `make up` — start the stack on Docker OR rootless Podman (Kali's default), no hand-tweaks.
+#
+# Podman is daemonless: `docker info` (→ podman info) succeeds even when the API socket that
+# `docker compose` needs is OFF. So we check the socket FILE directly and start it if missing.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
 DC="docker compose --env-file config/settings.env"
-reachable() { docker info >/dev/null 2>&1; }
+uid="$(id -u)"
+psock="${XDG_RUNTIME_DIR:-/run/user/$uid}/podman/podman.sock"
+case "${DOCKER_HOST:-}" in unix://*) psock="${DOCKER_HOST#unix://}" ;; esac
 
-if ! reachable; then
-  # Kali fronts Podman with a `docker` shim; its socket is off by default.
-  # (Harmless on real Docker — the unit just won't exist.)
-  echo "• container daemon unreachable — trying to start Podman's socket…"
-  systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
-  for _ in 1 2 3 4 5; do reachable && break; sleep 1; done
-fi
-
-if ! reachable; then
-  cat >&2 <<'EOF'
-
-  x  No container daemon is reachable. Start one, then re-run `make up`:
-
-       Podman (Kali default):   systemctl --user enable --now podman.socket
-       Docker Engine:           sudo apt install -y docker.io docker-compose-v2
-                                sudo systemctl enable --now docker
-                                sudo usermod -aG docker "$USER"    # then log out/in
-EOF
+if command -v podman >/dev/null 2>&1; then
+  if [ ! -S "$psock" ]; then
+    echo "• Podman detected — starting its API socket (docker compose needs it)…"
+    systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
+    for _ in 1 2 3; do [ -S "$psock" ] && break; sleep 1; done
+  fi
+  if [ ! -S "$psock" ]; then
+    # systemd --user not usable in this session? run the API service directly.
+    ( podman system service --time=0 >/dev/null 2>&1 & )
+    for _ in 1 2 3 4 5; do [ -S "$psock" ] && break; sleep 1; done
+  fi
+  if [ ! -S "$psock" ]; then
+    echo "  x  Couldn't start Podman's socket at $psock" >&2
+    echo "     Start it once by hand, then retry:  systemctl --user enable --now podman.socket" >&2
+    exit 1
+  fi
+  echo "• Podman socket ready: $psock"
+elif ! docker info >/dev/null 2>&1; then
+  echo "  x  No container daemon reachable. Start Docker:  sudo systemctl enable --now docker" >&2
   exit 1
 fi
 
