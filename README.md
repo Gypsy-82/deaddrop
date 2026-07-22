@@ -68,7 +68,7 @@ Check it's there: `docker compose version`
 ## Quick start
 
 ```bash
-git clone https://github.com/<you>/deaddrop.git
+git clone https://github.com/Gypsy-82/deaddrop.git
 cd deaddrop
 
 docker compose up -d          # or: make up
