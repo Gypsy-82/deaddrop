@@ -11,7 +11,9 @@ uid="$(id -u)"
 psock="${XDG_RUNTIME_DIR:-/run/user/$uid}/podman/podman.sock"
 case "${DOCKER_HOST:-}" in unix://*) psock="${DOCKER_HOST#unix://}" ;; esac
 
-if command -v podman >/dev/null 2>&1; then
+# Is the `docker` command actually Podman (Kali's shim)? Only then does it need the socket.
+# Real Docker won't match, even if the podman binary is still installed alongside it.
+if docker --version 2>&1 | grep -qi podman; then
   if [ ! -S "$psock" ]; then
     echo "• Podman detected — starting its API socket (docker compose needs it)…"
     systemctl --user enable --now podman.socket >/dev/null 2>&1 || true
