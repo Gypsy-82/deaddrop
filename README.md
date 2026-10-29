@@ -370,3 +370,7 @@ docker compose exec -T php cat /data/app.sqlite > backup.sqlite
   `make up`; `make share` follows the new port automatically.
 - **A link 404s** — it expired, was revoked, or the server restarted since you minted it. Mint a new one.
 - **See what's happening** — `make logs`.
+
+## License
+
+MIT. See [LICENSE](LICENSE).
